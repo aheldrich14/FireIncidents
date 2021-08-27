@@ -86,6 +86,7 @@ def make_prediction(in_date, in_time, in_lat, in_lon, green_lights, dfd_locs):
     model = load("boost_model.joblib")
 
     model_features = model.get_booster().feature_names
+    model_features
 
     ##create indicator vars for cluster columns
     cluster_cols = [x for x in model_features if "cluster" in x]
@@ -164,6 +165,16 @@ def week_periods():
 def month_periods():
     return 12
 
+def hash_return_1():
+    return 1
+
+@st.cache()
+def get_heatmap(fire_inc):
+    dow_hour_counts = fire_inc.groupby(by=['DoW', 'hour'])['injury_or_fatality'].count().reset_index()
+    dow_hour_counts = dow_hour_counts.pivot(index='DoW', columns='hour', values='injury_or_fatality')
+    return px.imshow(dow_hour_counts)
+
+
 st.title('Analysis of Fire Incidents in City of Detroit')
 st.sidebar.title("Enter Prediction Inputs")
 in_date = st.sidebar.date_input("Date")
@@ -198,10 +209,8 @@ green_lights, dfd_locs, fire_inc = load_data()
 dfd_coords = np.array(list(zip(dfd_locs['X'], dfd_locs['Y'])))
 light_coords = np.array(list(zip(dfd_locs['X'], dfd_locs['Y'])))
 
-dow_hour_counts = fire_inc.groupby(by=['DoW', 'hour'])['injury_or_fatality'].count().reset_index()
-dow_hour_counts = dow_hour_counts.pivot(index='DoW', columns='hour', values='injury_or_fatality')
 st.subheader(f"# of Incidents by Day of Week and Hour")
-st.plotly_chart(px.imshow(dow_hour_counts))
+st.plotly_chart(get_heatmap(fire_inc))
 
 inj_prob = make_prediction(in_date, in_time, lat, lon, light_coords, dfd_coords)
 inj_prob = str(inj_prob)
