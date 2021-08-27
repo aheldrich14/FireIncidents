@@ -63,7 +63,7 @@ def make_prediction(in_date, in_time, in_lat, in_lon, green_lights, dfd_locs):
 
     ##get location cluster
     cluster = get_cluster(in_lat, in_lon)
-
+    cluster
     pred_df = pd.DataFrame(data=
         {'hourx':[hour_x],
         'houry':[hour_y],
@@ -83,8 +83,9 @@ def make_prediction(in_date, in_time, in_lat, in_lon, green_lights, dfd_locs):
 
     
 
-    model = load("boost_model.joblib")
+    model = load("boost.joblib")
     model
+    st.write(model.get_booster())
 
     model_features = model.get_booster().feature_names
 
@@ -103,7 +104,6 @@ def make_prediction(in_date, in_time, in_lat, in_lon, green_lights, dfd_locs):
 @st.cache
 def get_cluster(lat, lon):
     clustering = load('cluster_model.joblib')   # long = x, lat = y
-    clustering
     return clustering.predict([[lat, lon]])[0]
 
 def get_distances(lat, lon, light_coords, dfd_coords):
