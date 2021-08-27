@@ -84,9 +84,9 @@ def make_prediction(in_date, in_time, in_lat, in_lon, green_lights, dfd_locs):
     
 
     model = load("boost_model.joblib")
+    model
 
     model_features = model.get_booster().feature_names
-    model_features
 
     ##create indicator vars for cluster columns
     cluster_cols = [x for x in model_features if "cluster" in x]
@@ -103,6 +103,7 @@ def make_prediction(in_date, in_time, in_lat, in_lon, green_lights, dfd_locs):
 @st.cache
 def get_cluster(lat, lon):
     clustering = load('cluster_model.joblib')   # long = x, lat = y
+    clustering
     return clustering.predict([[lat, lon]])[0]
 
 def get_distances(lat, lon, light_coords, dfd_coords):
