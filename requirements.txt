@@ -1,0 +1,9 @@
+sklearn
+streamlit
+numpy
+pandas
+datetime
+plotly
+scipy
+xgboost
+joblib
