@@ -20,8 +20,9 @@ def load_data():
     green_light = pd.read_csv(r"Project_Green_Light_Locations.csv")
     green_light['live_date'] = pd.to_datetime(green_light['live_date'])
     dfd_locations = pd.read_csv(r"DFD_Fire_Station_Locations.csv")
+    fire_inc = pd.read_csv(r"Fire_Incidents_Transformed.csv")
 
-    return green_light, dfd_locations
+    return green_light, dfd_locations, fire_inc
 
 @st.cache
 def make_prediction(in_date, in_time, in_lat, in_lon, green_lights, dfd_locs):
@@ -77,11 +78,22 @@ def make_prediction(in_date, in_time, in_lat, in_lon, green_lights, dfd_locs):
         'monthx':[month_x],
         'monthy':[month_y],
         'closest_light':[closest_light],
-        'clostest_stn':[clostes_stn],
-        'cluster':[cluster]})
+        'closest_stn':[clostes_stn],
+        })
 
-    model = xgb.XGBClassifier()
-    model.load_model("boost_model.json")
+    
+
+    model = load("boost_model.joblib")
+
+    model_features = model.get_booster().feature_names
+
+    ##create indicator vars for cluster columns
+    cluster_cols = [x for x in model_features if "cluster" in x]
+    pred_df[cluster_cols] = 0
+    cluster_col = "cluster_" + str(cluster)
+    pred_df[cluster_col] = 1
+
+    pred_df = pred_df[model_features] ##reorder columns
 
     prediction = model.predict_proba(pred_df)[0,1]
 
@@ -182,9 +194,14 @@ fig.update_layout(
 )
 st.sidebar.plotly_chart(fig, use_container_width=True)
 
-green_lights, dfd_locs = load_data()
+green_lights, dfd_locs, fire_inc = load_data()
 dfd_coords = np.array(list(zip(dfd_locs['X'], dfd_locs['Y'])))
 light_coords = np.array(list(zip(dfd_locs['X'], dfd_locs['Y'])))
+
+dow_hour_counts = fire_inc.groupby(by=['DoW', 'hour'])['injury_or_fatality'].count().reset_index()
+dow_hour_counts = dow_hour_counts.pivot(index='DoW', columns='hour', values='injury_or_fatality')
+st.subheader(f"# of Incidents by Day of Week and Hour")
+st.plotly_chart(px.imshow(dow_hour_counts))
 
 inj_prob = make_prediction(in_date, in_time, lat, lon, light_coords, dfd_coords)
 inj_prob = str(inj_prob)
