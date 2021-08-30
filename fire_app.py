@@ -63,7 +63,6 @@ def make_prediction(in_date, in_time, in_lat, in_lon, green_lights, dfd_locs):
 
     ##get location cluster
     cluster = get_cluster(in_lat, in_lon)
-    cluster
     pred_df = pd.DataFrame(data=
         {'hourx':[hour_x],
         'houry':[hour_y],
@@ -83,11 +82,17 @@ def make_prediction(in_date, in_time, in_lat, in_lon, green_lights, dfd_locs):
 
     
 
-    model = load("boost.joblib")
-    model
-    st.write(model.get_booster())
+    model = xgb.XGBClassifier()
+    model.load_model("boost_model.json")
 
-    model_features = model.get_booster().feature_names
+    model_features = ['hourx','houry','dayx', 'dayy', 'DoYx', 'DoYy', 'DoWx',
+        'DoWy', 'weekx', 'weeky', 'monthx', 'monthy', 'closest_stn',
+        'closest_light', 'cluster_7', 'cluster_20', 'cluster_23', 'cluster_21',
+        'cluster_0', 'cluster_15', 'cluster_19', 'cluster_5', 'cluster_9',
+        'cluster_8', 'cluster_2', 'cluster_17', 'cluster_10', 'cluster_3',
+        'cluster_22', 'cluster_14', 'cluster_11', 'cluster_13', 'cluster_18',
+        'cluster_24', 'cluster_1', 'cluster_4', 'cluster_16', 'cluster_6',
+        'cluster_12']
 
     ##create indicator vars for cluster columns
     cluster_cols = [x for x in model_features if "cluster" in x]
