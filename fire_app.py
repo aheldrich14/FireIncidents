@@ -212,6 +212,8 @@ fig.update_layout(
 st.sidebar.plotly_chart(fig, use_container_width=True)
 
 green_lights, dfd_locs, fire_inc = load_data()
+
+##convert dataframes to list of coordinate tuples
 dfd_coords = np.array(list(zip(dfd_locs['X'], dfd_locs['Y'])))
 light_coords = np.array(list(zip(dfd_locs['X'], dfd_locs['Y'])))
 
