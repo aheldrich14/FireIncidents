@@ -7,3 +7,5 @@ plotly
 scipy
 xgboost
 joblib
+geopandas
+shapely

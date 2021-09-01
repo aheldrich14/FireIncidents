@@ -1,3 +1,4 @@
+from pandas.io.parsers import read_csv
 from sklearn import cluster
 import streamlit as st
 import numpy as np
@@ -9,13 +10,15 @@ import plotly.graph_objects as go
 from scipy.spatial import distance
 import xgboost as xgb
 from joblib import dump, load
+from shapely.geometry import MultiPoint
+import geopandas as gpd
 
 @st.cache
 def load_data():
     """Loads relevant data from csv files
 
     Returns:
-        [type]: [description]
+        pd.DataFrame: green light, dfd locations, and incident data frames
     """
     green_light = pd.read_csv(r"Project_Green_Light_Locations.csv")
     green_light['live_date'] = pd.to_datetime(green_light['live_date'])
@@ -29,15 +32,15 @@ def make_prediction(in_date, in_time, in_lat, in_lon, green_lights, dfd_locs):
     """Generates probability of injury/fatality baed on input parameters
 
     Args:
-        in_date ([type]): [description]
-        in_time ([type]): [description]
-        in_lat ([type]): [description]
-        in_lon ([type]): [description]
-        green_lights ([type]): [description]
-        dfd_locs ([type]): [description]
+        in_date (datetime.date): prediction date
+        in_time (datetime.time): prediction time
+        in_lat (float): prediction latitude
+        in_lon (float): prediction longitude
+        green_lights (np.Array): green light coordinates
+        dfd_locs (np.Array): dfd coordinates
 
     Returns:
-        [type]: [description]
+        float: probability of injury/fatality
     """
 
     ##extract date parts from input
@@ -108,10 +111,30 @@ def make_prediction(in_date, in_time, in_lat, in_lon, green_lights, dfd_locs):
 
 @st.cache
 def get_cluster(lat, lon):
+    """Returns cluster number of latitude/longitude input
+
+    Args:
+        lat (float): latitude
+        lon (float): longitude
+
+    Returns:
+        int: cluster #
+    """
     clustering = load('cluster_model.joblib')   # long = x, lat = y
     return clustering.predict([[lat, lon]])[0]
 
 def get_distances(lat, lon, light_coords, dfd_coords):
+    """calculates the nearest green light location and dfd station
+
+    Args:
+        lat (float): latitude
+        lon (float): longitude
+        light_coords (np.Array): green light coordinates
+        dfd_coords (np.Array): dfd oordinates
+
+    Returns:
+        float: distance from input location to nearest light and station
+    """
     stn_dist = distance.cdist(np.array([(lon, lat)]), dfd_coords).min(axis=1)[0]
     light_dist = distance.cdist(np.array([(lon, lat)]), light_coords).min(axis=1)[0]
     
@@ -174,12 +197,97 @@ def month_periods():
 def hash_return_1():
     return 1
 
-@st.cache()
-def get_heatmap(fire_inc):
-    dow_hour_counts = fire_inc.groupby(by=['DoW', 'hour'])['injury_or_fatality'].count().reset_index()
-    dow_hour_counts = dow_hour_counts.pivot(index='DoW', columns='hour', values='injury_or_fatality')
-    return px.imshow(dow_hour_counts)
+@st.cache
+def get_heatmap(fire_inc, x, y):
+    """generates heatmap of incident counts based on x/y columns 
 
+    Args:
+        fire_inc (pd.DataFrame): fire incidents
+        x (str): column in fire_inc that will be on x axis of heatmap
+        y (str): column in fire_inc that will be on y axis of heatmap
+
+    Returns:
+        plotly.graph_object: heatmap graph object
+    """
+    counts = fire_inc.groupby(by=[x, y])['injury_or_fatality'].count().reset_index()
+    counts = counts.pivot(index=x, columns=y, values='injury_or_fatality')
+    return px.imshow(counts)
+
+def get_geo_df(fire_inc):
+    """generate geopandas dataframe with cluster details
+
+    Args:
+        fire_inc (pd.DataFrame): fire incidents
+
+    Returns:
+        gpd.GeoDataFrame: dataframe with cluster geometries
+    """
+    clusters = {'cluster': [], 'geometry': [], 'incident_count': [],
+        'inj_per_inc': [], 'inj': []}
+    for cluster in fire_inc['cluster'].unique():
+        if cluster == -1:
+            continue
+        points = fire_inc[fire_inc['cluster'] == cluster]
+        clusterPoints = MultiPoint(list(zip(points['x'], points['y'])))
+        clusterPoly = clusterPoints.convex_hull
+        clusters['cluster'].append(cluster)
+        clusters['geometry'].append(clusterPoly)
+        clusters['incident_count'].append(len(points))
+        clusters['inj_per_inc'].append(
+                                len(points[points['injury_or_fatality'] == 1])/len(points)*1000)
+        clusters['inj'].append(len(points[points['injury_or_fatality'] == 1]))
+
+    geoDf = gpd.GeoDataFrame(clusters, crs='EPSG:4326')
+
+    return geoDf.copy()
+
+@st.cache
+def get_cluster_map(fire_inc, dfd_locations):
+    """generate figure to display incident clusters w/ injury rate
+
+    Args:
+        fire_inc (pd.DataFrame): fire incidents
+        dfd_locations (pd.DataFrame): dfd locations
+
+    Returns:
+        plotly.graph_object: [map figure
+    """
+    geoDf = get_geo_df(fire_inc)
+
+    fig = go.Figure()
+    fig.add_trace(
+        go.Choroplethmapbox(
+            geojson=geoDf.__geo_interface__,
+            locations=geoDf.cluster,
+            featureidkey="properties.cluster",
+            ids=geoDf.index,
+            z=geoDf.inj_per_inc,
+            colorscale=[(0,"white"), (1,"red")],
+            marker={'opacity':.6},
+            name='Incident Cluster',
+        )
+    )
+    fig.add_trace(
+        go.Scattermapbox(
+            lat=dfd_locations['Y'],
+            lon=dfd_locations['X'],
+            marker={'size':5, 'color':'black'},
+            name='DFD Location'
+        )
+    )
+    fig.update_layout(
+        mapbox=dict(
+            bearing=0,
+            center = {"lat": 42.38, "lon": -83.08},
+            pitch=0,
+            zoom=9,
+            style='light'
+        ),
+        mapbox_style="open-street-map",
+        title="Injury/Fatality Rate per 1K Incidents"
+    )
+
+    return fig
 
 st.title('Analysis of Fire Incidents in City of Detroit')
 st.sidebar.title("Enter Prediction Inputs")
@@ -189,6 +297,8 @@ lat = 42.33
 lon = -83.05
 lat = st.sidebar.number_input("Latitude", min_value=42.3, max_value=42.45, value=lat)
 lon = st.sidebar.number_input("Longitude", min_value=-83.20, max_value=-82.95, value=lon)
+
+##add map to sidebar to show prediction location input
 fig = go.Figure()
 fig.add_trace(
     go.Scattermapbox(
@@ -217,9 +327,20 @@ green_lights, dfd_locs, fire_inc = load_data()
 dfd_coords = np.array(list(zip(dfd_locs['X'], dfd_locs['Y'])))
 light_coords = np.array(list(zip(dfd_locs['X'], dfd_locs['Y'])))
 
-st.subheader(f"# of Incidents by Day of Week and Hour")
-st.plotly_chart(get_heatmap(fire_inc))
 
+##create heatmaps of incidents
+st.subheader(f"# of Incidents by Day of Week and Hour")
+st.plotly_chart(get_heatmap(fire_inc, 'DoW', 'hour'))
+
+st.subheader(f"# of Incidents by Month and Day")
+st.plotly_chart(get_heatmap(fire_inc, 'month', 'day'))
+
+
+##display map of incident clusters
+st.subheader(f"Incident Clusters")
+st.plotly_chart(get_cluster_map(fire_inc, dfd_locs))
+
+##display prediction based on user inputs
 inj_prob = make_prediction(in_date, in_time, lat, lon, light_coords, dfd_coords)
 inj_prob = str(inj_prob)
 
