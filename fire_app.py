@@ -105,7 +105,7 @@ def make_prediction(in_date, in_time, in_lat, in_lon, green_lights, dfd_locs):
 
     pred_df = pred_df[model_features] ##reorder columns
 
-    prediction = model.predict_proba(pred_df)[0,1]
+    prediction = model.predict_proba(pred_df)[0,1] ##row 0, col 1
 
     return round(prediction, 2)
 
@@ -135,10 +135,15 @@ def get_distances(lat, lon, light_coords, dfd_coords):
     Returns:
         float: distance from input location to nearest light and station
     """
-    stn_dist = distance.cdist(np.array([(lon, lat)]), dfd_coords).min(axis=1)[0]
-    light_dist = distance.cdist(np.array([(lon, lat)]), light_coords).min(axis=1)[0]
     
-    return stn_dist, light_dist
+    light_dist = distance.cdist(
+                            np.array([(lon, lat)]),
+                            light_coords).min(axis=1)[0]
+    stn_dist = distance.cdist(
+                            np.array([(lon, lat)]),
+                            dfd_coords).min(axis=1)[0]
+    
+    return  light_dist, stn_dist
 
 def get_hour_transform(hour):
     hour_x = np.sin(2 * np.pi * hour / hour_periods())
@@ -239,7 +244,7 @@ def get_geo_df(fire_inc):
 
     geoDf = gpd.GeoDataFrame(clusters, crs='EPSG:4326')
 
-    return geoDf.copy()
+    return geoDf
 
 @st.cache
 def get_cluster_map(fire_inc, dfd_locations):
@@ -289,7 +294,55 @@ def get_cluster_map(fire_inc, dfd_locations):
 
     return fig
 
-st.title('Analysis of Fire Incidents in City of Detroit')
+@st.cache
+def display_hour_transform(df):
+    """Generates figure of transformed hour feature thorugh sin/cos
+
+    Args:
+        df (pd.DataFrame): dataframe of fire incidents
+
+    Returns:
+        plotly.graph_object: scatter plot
+    """
+
+    ##apply transform to hour column
+    df['hour_x'] = df['hour'].map(lambda x: get_hour_transform(x)[0]).round(2)
+    df['hour_y'] = df['hour'].map(lambda x: get_hour_transform(x)[1]).round(2)
+    
+    ##aggregrate the results so we can get counts
+    day_counts = (df.groupby(by=['hour_x','hour_y', 'hour'])
+                    .agg(**{"Incident Count": ("x", "count")})
+                    .reset_index())
+
+    fig = px.scatter(
+            day_counts,
+            x="hour_x",
+            y="hour_y",
+            hover_data=["hour"],
+            color="Incident Count")
+
+    return fig
+
+'''
+# Analysis of Fire Incidents in City of Detroit
+The goal of this project has two main objectives:
+- Gather interesting insights from data analysis and visualization
+- Build a predictive model to determine the likelihood of injury or fatality for
+a given fire incident
+- Allow for real-time prediction given user input
+
+This project collects publicly available data from the City of Detroit. Three
+datasets are used and combined to create additional predictors.
+
+1. [Fire Incidents](https://data.detroitmi.gov/datasets/fire-incidents/explore) -
+this is the main dataset that contains all reported fire
+incidents throughout the city. We'll look at years 2017-2019 specifically. 
+1. Fire Station Locations - used to calculate the nearest fire station to each
+incident.
+1. Project Green Light Locations - used as a proxy for crime/safety of nearby
+area. 
+'''
+
 st.sidebar.title("Enter Prediction Inputs")
 in_date = st.sidebar.date_input("Date")
 in_time = st.sidebar.time_input("Time", )
@@ -323,10 +376,29 @@ st.sidebar.plotly_chart(fig, use_container_width=True)
 
 green_lights, dfd_locs, fire_inc = load_data()
 
+'''
+Let's take a look at our partially transformed dataset. We'll explain how we 
+contruct additional feature below.
+'''
+
+st.dataframe(fire_inc.head())
+
+'''
+The Timestamp of each incident was broken out into it's respective dat parts. 
+However, when training the model we can't use the raw date parts or else we lose
+the cyclical nature of time. In other words, hour 0 and hour 23 are close
+together in reality, by if we use the features as they are the model will treat
+these values as far apart. Therefore, we need to apply sine and cosine 
+transforms to each datepart. Our result is two numbers representing each date 
+part as we can see below. Hours 0 and 12 are on opposite "sides", but 23 and 0 
+are close together.
+'''
+
+st.plotly_chart(display_hour_transform(fire_inc.copy()))
+
 ##convert dataframes to list of coordinate tuples
 dfd_coords = np.array(list(zip(dfd_locs['X'], dfd_locs['Y'])))
-light_coords = np.array(list(zip(dfd_locs['X'], dfd_locs['Y'])))
-
+light_coords = np.array(list(zip(green_lights['X'], green_lights['Y'])))
 
 ##create heatmaps of incidents
 st.subheader(f"# of Incidents by Day of Week and Hour")
@@ -343,6 +415,9 @@ st.plotly_chart(get_cluster_map(fire_inc, dfd_locs))
 ##display prediction based on user inputs
 inj_prob = make_prediction(in_date, in_time, lat, lon, light_coords, dfd_coords)
 inj_prob = str(inj_prob)
+
+# ## Use the sidebar on the left to make a prediction on the likelihood of
+# injury or fatality. 
 
 st.subheader(f"Likelihood of Injury or Fatality: {inj_prob}")
 
