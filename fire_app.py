@@ -1,5 +1,4 @@
 from pandas.io.parsers import read_csv
-from sklearn import cluster
 import streamlit as st
 import numpy as np
 import pandas as pd
