@@ -325,7 +325,7 @@ def display_hour_transform(df):
 
 '''
 # Analysis of Fire Incidents in City of Detroit
-The goal of this project has two main objectives:
+The goal of this project has three main objectives:
 - Gather interesting insights from data analysis and visualization
 - Build a predictive model to determine the likelihood of injury or fatality for
 a given fire incident
